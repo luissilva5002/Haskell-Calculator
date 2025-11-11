@@ -33,6 +33,8 @@ eval (Mul e1 e2) = eval e1 * eval e2
 -- | extras
 
 eval (Div e1 e2) = eval e1 `div` eval e2 -- this `div` performs integer division
+eval (Sub e1 e2) = eval e1 - eval e2
+eval (Mod e1 e2) = eval e1 `mod` eval e2 -- this computes the remainder
 
 -----------------------------------------------------------------------------------
 
@@ -40,10 +42,10 @@ eval (Div e1 e2) = eval e1 `div` eval e2 -- this `div` performs integer division
 -- Grammar rules:
 --
 -- expr ::= term exprCont
--- exprCont ::= '+' term exprCont | epsilon
+-- exprCont ::= '+' term exprCont | ’-’ term exprCont | epsilon
 
 -- term ::= factor termCont
--- termCont ::= '*' factor termCont | epsilon
+-- termCont ::= '*' factor termCont | ’/’ factor termCont | ’%’ factor termCont | epsilon
 
 -- factor ::= natural | '(' expr ')'
 
@@ -79,19 +81,24 @@ termCont acc =  do char '*'
                -- add div
                <|> do
                   char '/'
-                  t <- term
-                  exprCont (Div acc t)
+                  f <- factor
+                  exprCont (Div acc f)
+               <|> do 
+                  char '%'
+                  f <- factor
+                  exprCont (Mod acc f)
                <|> return acc
 
 
 factor :: Parser Expr
-factor = do n <- natural
+factor = do 
+            n <- natural
             return (Num n)
-          <|>
-          do char '('
-             e <- expr
-             char ')'
-       git init      return e
+         <|> do 
+           char '('
+           e <- expr
+           char ')'
+           return e
              
 
 natural :: Parser Integer
