@@ -14,27 +14,36 @@ import Data.Char
 -- a data type for expressions
 -- made up from integer numbers, + and *
 --
+
 data Expr = Num Integer
           | Add Expr Expr
           | Mul Expr Expr
-          -- | extras
           | Div Expr Expr
           | Sub Expr Expr
           | Mod Expr Expr
+          | Var String
           deriving Show
+
+data Command = Assign String Expr | Expr Expr
+
+type Pair = [(String, Integer)]
+
+lookupVar :: String -> Pair -> Integer
+lookupVar x pair = case lookup x pair of
+                      Just v  -> v
+                      Nothing -> error ("Variable not defined: " ++ x)
 
 -- a recursive evaluator for expressions
 --
-eval :: Expr -> Integer
-eval (Num n) = n
-eval (Add e1 e2) = eval e1 + eval e2
-eval (Mul e1 e2) = eval e1 * eval e2
 
--- | extras
-
-eval (Div e1 e2) = eval e1 `div` eval e2 -- this `div` performs integer division
-eval (Sub e1 e2) = eval e1 - eval e2
-eval (Mod e1 e2) = eval e1 `mod` eval e2 -- this computes the remainder
+eval :: Pair -> Expr -> Integer
+eval pair (Num n) = n
+eval pair (Var x) = lookupVar x pair
+eval pair (Add e1 e2) = eval pair e1 + eval pair e2
+eval pair (Mul e1 e2) = eval pair e1 * eval pair e2
+eval pair (Sub e1 e2) = eval pair e1 - eval pair e2
+eval pair (Div e1 e2) = eval pair e1 `div` eval pair e2
+eval pair (Mod e1 e2) = eval pair e1 `mod` eval pair e2
 
 -----------------------------------------------------------------------------------
 
@@ -65,8 +74,6 @@ exprCont acc = do char '+'
                   t <- term
                   exprCont (Sub acc t)
                <|> return acc
-
-
               
 term :: Parser Expr
 term = do f <- factor
@@ -76,9 +83,6 @@ termCont :: Expr -> Parser Expr
 termCont acc =  do char '*'
                    f <- factor  
                    termCont (Mul acc f)
-               -- <|> return acc
-
-               -- add div
                <|> do
                   char '/'
                   f <- factor
@@ -89,21 +93,33 @@ termCont acc =  do char '*'
                   exprCont (Mod acc f)
                <|> return acc
 
-
 factor :: Parser Expr
-factor = do 
-            n <- natural
+factor = do v <- variable
+            return (Var v)
+         <|>
+         do n <- natural
             return (Num n)
-         <|> do 
-           char '('
-           e <- expr
-           char ')'
-           return e
-             
+         <|>
+         do char '('
+            e <- expr
+            char ')'
+            return e
+
+command :: Parser Command
+command = do v <- variable
+             char '='
+             e <- expr
+             return (Assign v e)
+          <|>
+          do e <- expr
+             return (Expr e)
 
 natural :: Parser Integer
 natural = do xs <- many1 (satisfy isDigit) -- many1 reads next chars and puts them into string xs as long as the next char is int
              return (read xs) -- read converts string to int
+
+variable :: Parser String
+variable = many1 (satisfy isAlpha)
 
 -- Hierarchy: expr -> term -> factor
 -- Factor is first priority (last being called in recursion) ex: a * b
@@ -115,17 +131,26 @@ natural = do xs <- many1 (satisfy isDigit) -- many1 reads next chars and puts th
 main :: IO ()
 main
   = do txt <- getContents
-       calculator (lines txt)
+       runCommands[] (lines txt)
 
--- | read-eval-print loop
-calculator :: [String] -> IO ()
-calculator []  = return ()
-calculator (l:ls) = do putStrLn (evaluate l)
-                       calculator ls  
+execute :: Pair -> String -> (String, Pair)
+execute pair input =
+    case parse command input of
+        [(cmd, "")] -> runCommand pair cmd
+        _           -> error "Parse error"
 
--- | evaluate a single expression
-evaluate :: String -> String
-evaluate txt
-  = case parse expr txt of  -- | if the expression is a tree we convert the result (calculated by eval) to a string via show and return it
-      [ (tree, "") ] ->  show (eval tree)
-      _ -> "parse error; try again"  
+runCommand :: Pair -> Command -> (String, Pair)
+runCommand pair (Expr e) = (show v, pair)
+    where v = eval pair e
+    
+runCommand pair (Assign x e) = (show v, pair')
+    where 
+        v = eval pair e
+        pair' = (x,v) : filter ((/= x) . fst) pair
+    
+
+runCommands :: Pair -> [String] -> IO ()
+runCommands _ [] = return ()
+runCommands pair (l:ls) = do putStrLn out
+                             runCommands pair' ls 
+                        where (out, pair') = execute pair l

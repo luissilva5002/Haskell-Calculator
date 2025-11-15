@@ -12,8 +12,7 @@ module Parsing( Parser, parse, (<|>), failure,
 --   to lists of pairs
 --   of things and strings"
 
-newtype Parser a
-  = P (String -> [(a, String)])
+newtype Parser a = P (String -> [(a, String)]) -- ex: parse (char 'a') "abc" == [('a',  'bc')];  parse (char 'a') "xyz" == []
 
 -- | apply a parser
 parse :: Parser a -> String -> [(a, String)]
